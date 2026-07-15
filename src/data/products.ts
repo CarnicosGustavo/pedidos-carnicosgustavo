@@ -12,6 +12,56 @@ export type Category =
 
 export type Unit = 'piezas' | 'kg'
 
+/** Color de los botones (+ / - / Agregar / toggle) según la categoría. */
+export type CategoryStyle = {
+  label: string
+  solid: string
+  outline: string
+}
+
+export const CATEGORY_META: Record<Category, CategoryStyle> = {
+  canales: {
+    label: 'Canales',
+    solid: 'bg-rose-600 text-white active:bg-rose-700',
+    outline: 'border-rose-300 text-rose-700 active:bg-rose-50',
+  },
+  lomos: {
+    label: 'Lomos',
+    solid: 'bg-red-600 text-white active:bg-red-700',
+    outline: 'border-red-300 text-red-700 active:bg-red-50',
+  },
+  jamones: {
+    label: 'Jamones',
+    solid: 'bg-amber-500 text-white active:bg-amber-600',
+    outline: 'border-amber-300 text-amber-700 active:bg-amber-50',
+  },
+  cueros: {
+    label: 'Cueros',
+    solid: 'bg-orange-500 text-white active:bg-orange-600',
+    outline: 'border-orange-300 text-orange-700 active:bg-orange-50',
+  },
+  pulpas: {
+    label: 'Pulpas',
+    solid: 'bg-pink-600 text-white active:bg-pink-700',
+    outline: 'border-pink-300 text-pink-700 active:bg-pink-50',
+  },
+  visceras: {
+    label: 'Vísceras',
+    solid: 'bg-purple-600 text-white active:bg-purple-700',
+    outline: 'border-purple-300 text-purple-700 active:bg-purple-50',
+  },
+  huesos: {
+    label: 'Huesos',
+    solid: 'bg-stone-600 text-white active:bg-stone-700',
+    outline: 'border-stone-300 text-stone-700 active:bg-stone-50',
+  },
+  otros: {
+    label: 'Otros',
+    solid: 'bg-teal-600 text-white active:bg-teal-600',
+    outline: 'border-teal-300 text-teal-700 active:bg-teal-50',
+  },
+}
+
 export type Product = {
   id: string
   name: string
