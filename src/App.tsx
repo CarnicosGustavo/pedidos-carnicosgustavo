@@ -1,18 +1,23 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { CartSheet } from './components/CartSheet'
-import { CategoryChips } from './components/CategoryChips'
 import { Logo } from './components/Logo'
 import { ProductRow } from './components/ProductRow'
+import { RegionGrid } from './components/RegionGrid'
+import { RegionView } from './components/RegionView'
 import { SearchBar } from './components/SearchBar'
 import { Welcome } from './components/Welcome'
+import { fallbackCatalog, loadCatalog, type CatalogData } from './lib/catalog'
 import { BUSINESS } from './config'
-import { PRODUCTS, type Category } from './data/products'
+import { type Product, type Unit } from './data/products'
+import { type RegionId } from './data/regions'
+import { matchProducts, normalize } from './data/synonyms'
 import { useOrder } from './hooks/useOrder'
 import type { Recognized } from './lib/recognition'
 import { useTheme } from './theme'
 
 type Screen = 'welcome' | 'catalog'
+type View = { type: 'regions' } | { type: 'region'; regionId: RegionId }
 
 function App() {
   const order = useOrder()
@@ -23,11 +28,23 @@ function App() {
   const [cartOpen, setCartOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [category, setCategory] = useState<Category>('todos')
+  const [view, setView] = useState<View>({ type: 'regions' })
+
+  // Catálogo: primero fallback síncrono (sin parpadeo), después remoto en background.
+  const [catalog, setCatalog] = useState<CatalogData>(() => fallbackCatalog())
+  useEffect(() => {
+    let cancelled = false
+    loadCatalog().then((c) => {
+      if (!cancelled) setCatalog(c)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function enter(p: string, r: Recognized | null) {
     setPhone(p)
-    setRecognized(r) // null si es cliente nuevo: nunca verá "repetir pedido"
+    setRecognized(r)
     setScreen('catalog')
   }
 
@@ -35,20 +52,26 @@ function App() {
     if (order.items.length > 0 && !window.confirm('¿Empezar un pedido nuevo? Se borrará el pedido actual.')) return
     order.clear()
     setSearch('')
-    setCategory('todos')
+    setView({ type: 'regions' })
     setCartOpen(false)
     window.scrollTo({ top: 0 })
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (q) return PRODUCTS.filter((p) => p.name.toLowerCase().includes(q))
-    if (category !== 'todos') return PRODUCTS.filter((p) => p.category === category)
-    return PRODUCTS
-  }, [category, search])
+  // Búsqueda con sinónimos. Si hay query, filtramos y bloqueamos la vista de región.
+  const searchResults = useMemo(() => {
+    const q = normalize(search)
+    if (!q) return null
+    const ids = matchProducts(q, catalog.products.map((p) => p.id))
+    if (!ids) return null
+    return catalog.products.filter((p) => ids.includes(p.id))
+  }, [search, catalog])
 
-  const showRepeat =
-    recognized && recognized.items.length > 0 && order.items.length === 0
+  const showSearchResults = searchResults !== null
+
+  function handleAdd(product: Product) {
+    order.add(product.id, product.name, product.defaultUnit)
+    if (navigator.vibrate) navigator.vibrate(10)
+  }
 
   if (screen === 'welcome') {
     return <Welcome onEnter={enter} />
@@ -143,13 +166,12 @@ function App() {
           </div>
           <div className="bg-bg">
             <SearchBar value={search} onChange={setSearch} />
-            <CategoryChips active={category} onChange={setCategory} />
           </div>
         </div>
       </header>
 
       {/* Lista */}
-      <main className="relative flex-1 px-4 py-3">
+      <main className="relative flex-1">
         {/* Logo grande de fondo (se desvanece al abrir el carrito) */}
         <div
           className="pointer-events-none absolute bottom-[18%] right-[-6%] transition-opacity duration-300"
@@ -158,52 +180,55 @@ function App() {
           <Logo size={280} />
         </div>
 
-        <div className="relative mx-auto w-full max-w-6xl">
-          {showRepeat && (
-            <div className="cg-fade mb-4 rounded-2xl border border-line/12 bg-paper p-4">
-              <div className="flex items-center gap-3">
-                <Logo size={32} colorVar="var(--ink)" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-extrabold text-ink">Tu pedido de siempre</div>
-                  <div className="mt-0.5 truncate text-xs text-ink-soft">
-                    {recognized!.items.map((i) => i.name.toLowerCase()).slice(0, 3).join(', ')}
-                    {recognized!.items.length > 3 ? ` +${recognized!.items.length - 3}` : ''}
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => order.replaceAll(recognized!.items)}
-                className="cg-tap mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-chrome px-3 py-3 text-[13.5px] font-extrabold text-chrome-fg"
-              >
-                Repetir pedido anterior
-              </button>
-            </div>
+        <div className="relative mx-auto w-full max-w-6xl py-3">
+          {/* Búsqueda con resultados en línea */}
+          {showSearchResults && (
+            <SearchResults
+              products={searchResults!}
+              getQuantity={order.getQuantity}
+              getItem={order.getItem}
+              onAdd={handleAdd}
+              onIncrement={order.increment}
+              onDecrement={order.decrement}
+              onSetUnit={order.setUnit}
+              onSetQuantity={order.setQuantity}
+              query={search}
+            />
           )}
 
-          {filtered.length === 0 ? (
-            <div className="mt-8 text-center text-sm text-ink-faint">No se encontraron productos</div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filtered.map((product) => (
-                <ProductRow
-                  key={product.id}
-                  product={product}
-                  quantity={order.getQuantity(product.id)}
-                  unit={order.getItem(product.id)?.unit ?? 'piezas'}
-                  onAdd={() => order.add(product.id, product.name)}
-                  onIncrement={() => order.increment(product.id)}
-                  onDecrement={() => order.decrement(product.id)}
-                  onSetUnit={(u) => order.setUnit(product.id, u)}
-                  onSetQuantity={(q) => order.setQuantity(product.id, q)}
-                />
-              ))}
-            </div>
+          {/* Sin búsqueda: navegación por regiones */}
+          {!showSearchResults && view.type === 'regions' && (
+            <RegionGrid
+              activeRegion={null}
+              onSelectRegion={(id) => setView({ type: 'region', regionId: id })}
+              onSelectFrequent={() => {/* TODO F1: vista de frecuentes */}}
+              showFrequentTab
+            />
           )}
 
-          <div className="mt-4 pb-4 text-center text-xs text-ink-faint">
-            {filtered.length} de {PRODUCTS.length} productos
-          </div>
+          {!showSearchResults && view.type === 'region' && (
+            <RegionView
+              regionId={view.regionId}
+              onBack={() => {
+                setView({ type: 'regions' })
+                window.scrollTo({ top: 0 })
+              }}
+              getQuantity={order.getQuantity}
+              getItem={order.getItem}
+              onAdd={handleAdd}
+              onIncrement={order.increment}
+              onDecrement={order.decrement}
+              onSetUnit={order.setUnit}
+              onSetQuantity={order.setQuantity}
+            />
+          )}
+
+          {!showSearchResults && (
+            <div className="mt-2 px-4 pb-4 text-center text-xs text-ink-faint">
+              {catalog.products.length} productos en {catalog.regions.length} regiones
+              {!catalog.fromRemote && ' · modo local'}
+            </div>
+          )}
         </div>
       </main>
 
@@ -240,6 +265,63 @@ function App() {
         onSetQuantity={order.setQuantity}
         onReplaceAll={order.replaceAll}
       />
+    </div>
+  )
+}
+
+/** Bloque de resultados de búsqueda, reutilizado por la búsqueda global. */
+function SearchResults({
+  products,
+  query,
+  getQuantity,
+  getItem,
+  onAdd,
+  onIncrement,
+  onDecrement,
+  onSetUnit,
+  onSetQuantity,
+}: {
+  products: Product[]
+  query: string
+  getQuantity: (id: string) => number
+  getItem: (id: string) => { productId: string; name: string; quantity: number; unit: Unit } | undefined
+  onAdd: (p: Product) => void
+  onIncrement: (id: string) => void
+  onDecrement: (id: string) => void
+  onSetUnit: (id: string, u: Unit) => void
+  onSetQuantity: (id: string, q: number) => void
+}) {
+  return (
+    <div className="px-4 pb-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-ink-faint">
+          Resultados para “{query}”
+        </div>
+        <div className="text-[11px] font-medium text-ink-soft">
+          {products.length} {products.length === 1 ? 'producto' : 'productos'}
+        </div>
+      </div>
+      {products.length === 0 ? (
+        <div className="mt-8 text-center text-sm text-ink-soft">
+          No encontramos ese corte. Prueba con otro nombre (ej. “chicharrón”, “pancita”, “molida”).
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {products.map((product) => (
+            <ProductRow
+              key={product.id}
+              product={product}
+              quantity={getQuantity(product.id)}
+              unit={getItem(product.id)?.unit ?? product.defaultUnit}
+              onAdd={() => onAdd(product)}
+              onIncrement={() => onIncrement(product.id)}
+              onDecrement={() => onDecrement(product.id)}
+              onSetUnit={(u) => onSetUnit(product.id, u)}
+              onSetQuantity={(q) => onSetQuantity(product.id, q)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

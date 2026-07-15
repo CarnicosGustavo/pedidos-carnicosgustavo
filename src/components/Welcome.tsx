@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { BUSINESS } from '../config'
 import { lookupLastOrder, type Recognized } from '../lib/recognition'
@@ -8,12 +8,31 @@ type Props = {
   onEnter: (phone: string, recognized: Recognized | null) => void
 }
 
+function getPhoneFromUrl(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    const url = new URL(window.location.href)
+    const p = url.searchParams.get('phone') || url.searchParams.get('whatsapp') || url.searchParams.get('tel') || ''
+    return p.replace(/[^\d]/g, '').slice(0, 13)
+  } catch {
+    return ''
+  }
+}
+
 export function Welcome({ onEnter }: Props) {
-  const [phone, setPhone] = useState('')
+  const [phone, setPhone] = useState<string>(() => getPhoneFromUrl())
   const [recognized, setRecognized] = useState<Recognized | null>(null)
   const [checking, setChecking] = useState(false)
   const digits = phone.replace(/[^\d]/g, '')
   const ready = digits.length >= 10
+
+  // Si la URL trae un teléfono, hace lookup automático al montar.
+  useEffect(() => {
+    if (digits.length >= 10) {
+      void check()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function check() {
     if (digits.length < 10) {
@@ -61,6 +80,7 @@ export function Welcome({ onEnter }: Props) {
             onBlur={check}
             inputMode="tel"
             placeholder="55 0000 0000"
+            autoFocus={digits.length === 0}
             className="w-full bg-transparent py-4 font-mono text-lg font-bold tracking-wide text-ink outline-none placeholder:text-ink-faint"
           />
           {checking && <span className="text-xs text-ink-faint">…</span>}
@@ -72,8 +92,20 @@ export function Welcome({ onEnter }: Props) {
         </div>
 
         {recognized && (
-          <div className="cg-fade mt-3 rounded-xl border border-green/40 bg-green-wash px-4 py-3 text-sm font-semibold text-ink">
-            Bienvenido {recognized.businessName || 'de nuevo'} 👋
+          <div className="cg-fade mt-3 rounded-xl border border-green/40 bg-green-wash px-4 py-3">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-ink-soft">
+              Bienvenido de nuevo
+            </div>
+            <div className="mt-0.5 text-[17px] font-extrabold text-ink">
+              {recognized.businessName || '¿Qué te llevas hoy?'} 👋
+            </div>
+          </div>
+        )}
+
+        {!recognized && digits.length >= 7 && (
+          <div className="mt-3 flex items-center gap-1.5 text-[11px] text-ink-soft">
+            <span>✨</span>
+            <span>¿Primera vez? Empieza con un pedido pequeño.</span>
           </div>
         )}
 
@@ -87,14 +119,14 @@ export function Welcome({ onEnter }: Props) {
             ready ? 'opacity-100' : 'opacity-45',
           ].join(' ')}
         >
-          Empezar pedido
+          {recognized ? 'Entrar a mi cuenta' : 'Empezar pedido'}
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14M13 6l6 6-6 6" />
           </svg>
         </button>
 
         <p className="mt-3 text-center text-[11px] font-medium text-ink-faint">
-          Te reconocemos por tu WhatsApp y guardamos tu pedido.
+          Manda tu número y te reconocemos. Tu pedido se envía al CEDIS por WhatsApp.
         </p>
       </div>
     </div>
