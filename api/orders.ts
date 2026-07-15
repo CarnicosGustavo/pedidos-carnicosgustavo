@@ -141,4 +141,19 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   json(res, 200, { ok: true, id: data?.id, orderNumber })
+
+  // Refresca la tabla de frecuentes en background (no bloquea la respuesta).
+  // Si la RPC no existe aún, falla silenciosamente — el admin la puede
+  // disparar manualmente o se refrescará en el próximo /api/frequent.
+  void supabase
+    .rpc('frequent_products_aggregate', { limit_n: 50 })
+    .then(({ error: rpcErr }) => {
+      if (rpcErr && !/Could not find the function/i.test(rpcErr.message)) {
+        // eslint-disable-next-line no-console
+        console.warn('[orders] refresh frequent_products failed:', rpcErr.message)
+      }
+    })
+    .catch(() => {
+      /* swallow */
+    })
 }

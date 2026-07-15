@@ -40,6 +40,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return
   }
 
+  // Fail-soft: si la migración no se ha aplicado, devolvemos lista vacía
+  // (la app sigue funcionando y muestra los productos en el orden local).
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    json(res, 200, { ok: true, items: [], cached: false, note: 'Supabase no configurado' })
+    return
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL?.trim()
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
   const table = (process.env.SUPABASE_ORDERS_TABLE?.trim() || 'web_orders').trim()
@@ -54,19 +61,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   })
 
   try {
-    // Suma las cantidades de cada productId en los últimos 90 días.
-    // items es jsonb; usamos una RPC-friendly con sql() para hacer unnesting.
-    // Si falla (Postgres no soporta SELECT … FROM jsonb_array_elements en PostgREST),
-    // caemos a `frequent_products` precomputado.
     const rows = await aggregateFrequent(supabase, table, limit * 3)
-
     _cache = { value: rows, expires: Date.now() + CACHE_TTL_MS }
     json(res, 200, { ok: true, items: rows.slice(0, limit), cached: false })
   } catch (e) {
-    json(res, 500, {
-      ok: false,
-      error: e instanceof Error ? e.message : 'Aggregation failed',
-    })
+    // Fail-soft: la app sigue funcionando aunque la migración no se haya aplicado.
+    // eslint-disable-next-line no-console
+    console.warn('[frequent] aggregate failed:', e instanceof Error ? e.message : e)
+    json(res, 200, { ok: true, items: [], cached: false, note: 'aggregation unavailable' })
   }
 }
 

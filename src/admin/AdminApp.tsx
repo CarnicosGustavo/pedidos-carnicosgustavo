@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 
 import { Logo } from '../components/Logo'
-import { getSupabase, isSupabaseConfigured } from '../lib/supabase'
+import { isSupabaseConfigured } from '../lib/supabase'
 import { PRODUCTS as LOCAL_PRODUCTS } from '../data/products'
 import { REGIONS as LOCAL_REGIONS, type Region, type RegionId } from '../data/regions'
 import type { Product, Unit } from '../data/products'
 
 const SESSION_KEY = 'cg_admin_session_v1'
 
-function getPassword(): string {
+function getAdminPassword(): string {
   return (import.meta.env.VITE_ADMIN_PASSWORD as string | undefined)?.trim() || ''
 }
 
@@ -29,11 +29,31 @@ function writeSession(v: boolean) {
   }
 }
 
+async function adminFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-admin-token': getAdminPassword(),
+    ...(init.headers as Record<string, string> | undefined),
+  }
+  const resp = await fetch(path, { ...init, headers })
+  if (!resp.ok) {
+    let msg = `HTTP ${resp.status}`
+    try {
+      const j = (await resp.json()) as { error?: string }
+      if (j?.error) msg = j.error
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg)
+  }
+  return (await resp.json()) as T
+}
+
 export function AdminApp() {
   const [authed, setAuthed] = useState<boolean>(() => readSession())
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const expected = getPassword()
+  const expected = getAdminPassword()
 
   if (!expected) {
     return (
@@ -109,9 +129,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string>('')
+  const [error, setError] = useState<string>('')
 
   useEffect(() => {
-    void loadAll(setProducts, setRegions, setLoading)
+    void loadAll(setProducts, setRegions, setLoading, setError)
   }, [])
 
   return (
@@ -154,6 +175,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             {message}
           </div>
         )}
+        {error && (
+          <div className="mb-3 rounded-xl border border-red/30 bg-red/10 px-3 py-2 text-xs font-bold text-red">
+            {error}
+          </div>
+        )}
 
         {loading ? (
           <div className="py-10 text-center text-sm text-ink-soft">Cargando…</div>
@@ -163,8 +189,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             regions={regions}
             saving={saving}
             onSave={async (p) => {
-              setSaving(true)
-              await saveProduct(p, () => {
+              setSaving(true); setError('')
+              try {
+                await saveProduct(p)
                 setProducts((prev) => {
                   const i = prev.findIndex((x) => x.id === p.id)
                   if (i < 0) return [...prev, p]
@@ -174,7 +201,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 })
                 setMessage(`Guardado: ${p.id}`)
                 setTimeout(() => setMessage(''), 2000)
-              })
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'Error al guardar.')
+              }
               setSaving(false)
             }}
           />
@@ -183,8 +212,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             regions={regions}
             saving={saving}
             onSave={async (r) => {
-              setSaving(true)
-              await saveRegion(r, () => {
+              setSaving(true); setError('')
+              try {
+                await saveRegion(r)
                 setRegions((prev) => {
                   const i = prev.findIndex((x) => x.id === r.id)
                   if (i < 0) return [...prev, r]
@@ -194,12 +224,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 })
                 setMessage(`Guardado: ${r.id}`)
                 setTimeout(() => setMessage(''), 2000)
-              })
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'Error al guardar.')
+              }
               setSaving(false)
             }}
           />
         ) : (
-          <SynonymsEditor products={products} />
+          <SynonymsEditor
+            products={products}
+            onError={setError}
+            onMessage={setMessage}
+          />
         )}
       </div>
     </div>
@@ -312,7 +348,7 @@ function ProductRowEditor({
         <input
           type="checkbox"
           checked={p.is_active ?? true}
-          onChange={(e) => setP((prev) => ({ ...prev, is_active: e.target.checked } as Product))}
+          onChange={(e) => setP((prev) => ({ ...prev, is_active: e.target.checked }))}
         />
       </label>
       <div className="col-span-1">
@@ -413,22 +449,29 @@ function RegionRowEditor({
   )
 }
 
-function SynonymsEditor({ products }: { products: Product[] }) {
+function SynonymsEditor({
+  products,
+  onError,
+  onMessage,
+}: {
+  products: Product[]
+  onError: (s: string) => void
+  onMessage: (s: string) => void
+}) {
   const [productId, setProductId] = useState(products[0]?.id ?? '')
   const [terms, setTerms] = useState<{ id: string; term: string }[]>([])
   const [newTerm, setNewTerm] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState('')
 
   useEffect(() => {
     if (!productId) return
     setLoading(true)
-    loadSynonyms(productId).then((rows) => {
-      setTerms(rows)
-      setLoading(false)
-    })
-  }, [productId])
+    loadSynonyms(productId)
+      .then(setTerms)
+      .catch((e) => onError(e instanceof Error ? e.message : 'Error al cargar.'))
+      .finally(() => setLoading(false))
+  }, [productId, onError])
 
   return (
     <div className="rounded-2xl border border-line/10 bg-paper p-4">
@@ -457,12 +500,15 @@ function SynonymsEditor({ products }: { products: Product[] }) {
           disabled={!newTerm.trim() || saving}
           onClick={async () => {
             setSaving(true)
-            await addSynonym(productId, newTerm.trim(), (row) => {
-              setTerms((prev) => [...prev, row])
+            try {
+              const row = await addSynonym(productId, newTerm.trim())
+              setTerms((prev) => (prev.some((t) => t.id === row.id) ? prev : [...prev, row]))
               setNewTerm('')
-              setMessage('Sinónimo agregado.')
-              setTimeout(() => setMessage(''), 1500)
-            })
+              onMessage('Sinónimo agregado.')
+              setTimeout(() => onMessage(''), 1500)
+            } catch (e) {
+              onError(e instanceof Error ? e.message : 'Error al agregar.')
+            }
             setSaving(false)
           }}
           className="rounded-md bg-red px-3 py-1.5 text-xs font-extrabold text-white disabled:opacity-40"
@@ -470,10 +516,6 @@ function SynonymsEditor({ products }: { products: Product[] }) {
           Agregar
         </button>
       </div>
-
-      {message && (
-        <div className="mt-2 text-xs font-bold text-green">{message}</div>
-      )}
 
       <div className="mt-3">
         {loading ? (
@@ -491,8 +533,12 @@ function SynonymsEditor({ products }: { products: Product[] }) {
                 <button
                   type="button"
                   onClick={async () => {
-                    await deleteSynonym(t.id)
-                    setTerms((prev) => prev.filter((x) => x.id !== t.id))
+                    try {
+                      await deleteSynonym(t.id)
+                      setTerms((prev) => prev.filter((x) => x.id !== t.id))
+                    } catch (e) {
+                      onError(e instanceof Error ? e.message : 'Error al eliminar.')
+                    }
                   }}
                   className="text-ink-faint active:text-red"
                   aria-label={`Eliminar ${t.term}`}
@@ -509,69 +555,78 @@ function SynonymsEditor({ products }: { products: Product[] }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Data access (admin: usa anon key con bypass de RLS vía service role NO,
-// o el admin debería usar una API. Por ahora, intentamos con anon key y
-// policies permisivas para authenticated. Si no hay policy de write, se
-// debe crear una y dar acceso al usuario con el password.
+// Data access (via /api/admin/* — el backend usa el service role).
 // ──────────────────────────────────────────────────────────────────────
 
 async function loadAll(
   setProducts: (p: Product[]) => void,
   setRegions: (r: Region[]) => void,
   setLoading: (b: boolean) => void,
+  setError: (s: string) => void,
 ) {
-  const sb = getSupabase()
-  if (!sb) return
   setLoading(true)
-  const [pr, rr] = await Promise.all([
-    sb.from('products').select('*').order('sort_order'),
-    sb.from('regions').select('*').order('sort_order'),
-  ])
-  if (pr.data) setProducts(pr.data as unknown as Product[])
-  if (rr.data) setRegions(rr.data as unknown as Region[])
+  try {
+    const [p, r] = await Promise.all([
+      adminFetch<{ ok: boolean; items: Product[] }>('/api/admin/products'),
+      adminFetch<{ ok: boolean; items: Region[] }>('/api/admin/regions'),
+    ])
+    if (p.items) setProducts(p.items)
+    if (r.items) setRegions(r.items)
+  } catch (e) {
+    setError(e instanceof Error ? e.message : 'Error al cargar.')
+  }
   setLoading(false)
 }
 
-async function saveProduct(p: Product, done: () => void) {
-  const sb = getSupabase()
-  if (!sb) return done()
-  await sb.from('products').upsert(p)
-  done()
+function saveProduct(p: Product) {
+  return adminFetch<{ ok: boolean }>('/api/admin/products', {
+    method: 'PUT',
+    body: JSON.stringify({
+      id: p.id,
+      name: p.name,
+      region_id: p.regionId,
+      category: p.category ?? 'otros',
+      default_unit: p.defaultUnit,
+      photo_url: p.photo ?? null,
+      sort_order: p.sortOrder,
+      is_active: p.is_active ?? true,
+      description: p.description ?? null,
+    }),
+  })
 }
 
-async function saveRegion(r: Region, done: () => void) {
-  const sb = getSupabase()
-  if (!sb) return done()
-  await sb.from('regions').upsert(r)
-  done()
+function saveRegion(r: Region) {
+  return adminFetch<{ ok: boolean }>('/api/admin/regions', {
+    method: 'PUT',
+    body: JSON.stringify({
+      id: r.id,
+      name: r.name,
+      short_name: r.shortName,
+      emoji: r.emoji,
+      color: r.color,
+      sort_order: r.sortOrder,
+      is_active: true,
+    }),
+  })
 }
 
-async function loadSynonyms(productId: string): Promise<{ id: string; term: string }[]> {
-  const sb = getSupabase()
-  if (!sb) return []
-  const { data } = await sb
-    .from('product_synonyms')
-    .select('id, term')
-    .eq('product_id', productId)
-    .order('term')
-  return (data ?? []) as { id: string; term: string }[]
+function loadSynonyms(productId: string) {
+  return adminFetch<{ ok: boolean; items: { id: string; term: string }[] }>(
+    `/api/admin/synonyms?productId=${encodeURIComponent(productId)}`,
+  ).then((r) => r.items ?? [])
 }
 
-async function addSynonym(productId: string, term: string, done: (row: { id: string; term: string }) => void) {
-  const sb = getSupabase()
-  if (!sb) return
-  const { data } = await sb
-    .from('product_synonyms')
-    .insert({ product_id: productId, term })
-    .select('id, term')
-    .single()
-  if (data) done(data as { id: string; term: string })
+function addSynonym(productId: string, term: string) {
+  return adminFetch<{ ok: boolean; item: { id: string; term: string } }>(
+    '/api/admin/synonyms',
+    { method: 'POST', body: JSON.stringify({ productId, term }) },
+  ).then((r) => r.item)
 }
 
-async function deleteSynonym(id: string) {
-  const sb = getSupabase()
-  if (!sb) return
-  await sb.from('product_synonyms').delete().eq('id', id)
+function deleteSynonym(id: string) {
+  return adminFetch<{ ok: boolean }>(`/api/admin/synonyms?id=${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
 }
 
 function Center({ children }: { children: React.ReactNode }) {

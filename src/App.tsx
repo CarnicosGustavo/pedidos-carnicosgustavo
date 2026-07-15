@@ -17,7 +17,7 @@ import type { Recognized } from './lib/recognition'
 import { useTheme } from './theme'
 
 type Screen = 'welcome' | 'catalog'
-type View = { type: 'regions' } | { type: 'region'; regionId: RegionId }
+type View = { type: 'regions' } | { type: 'region'; regionId: RegionId } | { type: 'frequent' }
 
 function App() {
   const order = useOrder()
@@ -201,7 +201,10 @@ function App() {
             <RegionGrid
               activeRegion={null}
               onSelectRegion={(id) => setView({ type: 'region', regionId: id })}
-              onSelectFrequent={() => {/* TODO F1: vista de frecuentes */}}
+              onSelectFrequent={() => {
+                setView({ type: 'frequent' })
+                window.scrollTo({ top: 0 })
+              }}
               showFrequentTab
             />
           )}
@@ -209,6 +212,23 @@ function App() {
           {!showSearchResults && view.type === 'region' && (
             <RegionView
               regionId={view.regionId}
+              onBack={() => {
+                setView({ type: 'regions' })
+                window.scrollTo({ top: 0 })
+              }}
+              getQuantity={order.getQuantity}
+              getItem={order.getItem}
+              onAdd={handleAdd}
+              onIncrement={order.increment}
+              onDecrement={order.decrement}
+              onSetUnit={order.setUnit}
+              onSetQuantity={order.setQuantity}
+            />
+          )}
+
+          {!showSearchResults && view.type === 'frequent' && (
+            <FrequentView
+              catalog={catalog}
               onBack={() => {
                 setView({ type: 'regions' })
                 window.scrollTo({ top: 0 })
@@ -327,3 +347,106 @@ function SearchResults({
 }
 
 export default App
+
+/** Vista "Frecuentes": productos más pedidos en los últimos 90 días. */
+function FrequentView({
+  catalog,
+  onBack,
+  getQuantity,
+  getItem,
+  onAdd,
+  onIncrement,
+  onDecrement,
+  onSetUnit,
+  onSetQuantity,
+}: {
+  catalog: CatalogData
+  onBack: () => void
+  getQuantity: (id: string) => number
+  getItem: (id: string) => { productId: string; name: string; quantity: number; unit: Unit } | undefined
+  onAdd: (p: Product) => void
+  onIncrement: (id: string) => void
+  onDecrement: (id: string) => void
+  onSetUnit: (id: string, u: Unit) => void
+  onSetQuantity: (id: string, q: number) => void
+}) {
+  const [frequent, setFrequent] = useState<Product[] | null>(null)
+  const [note, setNote] = useState<string>('')
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/frequent?limit=12')
+      .then((r) => r.json())
+      .then((data: { ok: boolean; items: { productId: string; name: string; count: number }[]; note?: string }) => {
+        if (cancelled) return
+        if (data.note) setNote(data.note)
+        if (data.ok && data.items.length > 0) {
+          const byId = new Map(catalog.products.map((p) => [p.id, p]))
+          const ps = data.items
+            .map((it) => byId.get(it.productId))
+            .filter((p): p is Product => Boolean(p))
+          setFrequent(ps)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFrequent([])
+      })
+    return () => { cancelled = true }
+  }, [catalog])
+
+  // Si no hay datos remotos, fallback: top productos por sortOrder de las
+  // primeras 3 regiones (lomo, pierna, cabeza son las más típicas).
+  const display = useMemo(() => {
+    if (frequent) return frequent
+    const topRegions: RegionId[] = ['lomo-espaldilla', 'pierna-jamon', 'cabeza-cachete', 'panza-pecho', 'costillar-hueso']
+    const ps: Product[] = []
+    for (const r of topRegions) {
+      const items = catalog.products.filter((p) => p.regionId === r).sort((a, b) => a.sortOrder - b.sortOrder)
+      ps.push(...items.slice(0, 2))
+      if (ps.length >= 12) break
+    }
+    return ps.slice(0, 12)
+  }, [frequent, catalog])
+
+  return (
+    <div className="px-4 pb-3">
+      <div className="sticky top-[120px] z-20 -mx-4 mb-3 flex items-center gap-2 border-b border-line/10 bg-bg/95 px-4 py-2 backdrop-blur">
+        <button
+          type="button"
+          onClick={onBack}
+          className="cg-tap flex h-9 w-9 items-center justify-center rounded-full border border-line/15 bg-paper text-ink active:bg-paper2"
+          aria-label="Volver"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="text-xl leading-none" aria-hidden="true">⭐</span>
+          <div className="min-w-0">
+            <div className="truncate text-[15px] font-extrabold text-amber-700">Frecuentes</div>
+            <div className="truncate text-[11px] font-medium text-ink-soft">
+              {note ? 'Sin datos aún — los clientes aún no piden.' : 'Lo que más se pide'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {display.map((product) => (
+          <ProductRow
+            key={product.id}
+            product={product}
+            quantity={getQuantity(product.id)}
+            unit={getItem(product.id)?.unit ?? product.defaultUnit}
+            onAdd={() => onAdd(product)}
+            onIncrement={() => onIncrement(product.id)}
+            onDecrement={() => onDecrement(product.id)}
+            onSetUnit={(u) => onSetUnit(product.id, u)}
+            onSetQuantity={(q) => onSetQuantity(product.id, q)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
