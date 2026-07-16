@@ -1,4 +1,5 @@
 import type { OrderItem } from '../hooks/useOrder'
+import { BUSINESS } from '../config'
 
 export type CheckoutInfo = {
   businessName: string
@@ -17,9 +18,9 @@ export function buildWhatsAppMessage(params: {
   const { checkout, items, locationLabel, orderNumber } = params
 
   const lines: string[] = []
-  lines.push('*Pedido - Carnicos Gustavo*')
+  lines.push(`*Pedido - ${BUSINESS.shortName}*`)
   if (orderNumber) lines.push(`*Pedido #${orderNumber}*`)
-  lines.push(`CEDIS: ${locationLabel}`)
+  lines.push(`Centro de Distribucion: ${locationLabel}`)
   lines.push('')
   lines.push(`Negocio: ${checkout.businessName}`)
   lines.push(`Contacto: ${checkout.contactName}`)

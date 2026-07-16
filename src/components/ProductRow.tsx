@@ -30,17 +30,17 @@ export function ProductRow({
   return (
     <div
       className={[
-        'rounded-2xl border bg-paper px-3.5 py-3 transition-colors',
+        'rounded-2xl border bg-paper px-3 py-3 transition-colors sm:px-3.5',
         inOrder ? 'border-red/45' : 'border-line/10',
       ].join(' ')}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2.5">
         {/* Foto o glifo de categoría */}
         <ProductThumb product={product} />
 
         <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="text-[15px] font-extrabold uppercase leading-tight tracking-tight text-ink">
+            <div className="break-words text-[14px] font-extrabold uppercase leading-tight tracking-tight text-ink sm:text-[15px]">
               {product.name}
             </div>
             {product.description && (
@@ -54,7 +54,7 @@ export function ProductRow({
             <button
               type="button"
               onClick={onAdd}
-              className={`cg-tap shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold shadow-soft ${meta.solid}`}
+              className={`cg-tap shrink-0 rounded-xl px-3 py-2 text-[13px] font-bold shadow-soft sm:px-4 sm:text-sm ${meta.solid}`}
             >
               + Agregar
             </button>
@@ -63,7 +63,7 @@ export function ProductRow({
               <button
                 type="button"
                 onClick={onDecrement}
-                className={`cg-tap flex h-9 w-9 items-center justify-center rounded-lg text-lg font-bold ${meta.outline}`}
+                className={`cg-tap flex h-8 w-8 items-center justify-center rounded-lg text-base font-bold sm:h-9 sm:w-9 sm:text-lg ${meta.outline}`}
                 aria-label="Quitar uno"
               >
                 −
@@ -71,12 +71,12 @@ export function ProductRow({
               <QtyInput
                 value={quantity}
                 onChange={onSetQuantity}
-                className="h-9 w-14 rounded-lg border border-line/15 bg-paper2 text-center font-mono text-sm font-bold text-ink outline-none focus:border-red"
+                className="h-8 w-12 rounded-lg border border-line/15 bg-paper2 text-center font-mono text-[13px] font-bold text-ink outline-none focus:border-red sm:h-9 sm:w-14 sm:text-sm"
               />
               <button
                 type="button"
                 onClick={onIncrement}
-                className={`cg-tap flex h-9 w-9 items-center justify-center rounded-lg text-lg font-bold ${meta.solid}`}
+                className={`cg-tap flex h-8 w-8 items-center justify-center rounded-lg text-base font-bold sm:h-9 sm:w-9 sm:text-lg ${meta.solid}`}
                 aria-label="Agregar uno"
               >
                 +
@@ -122,7 +122,7 @@ function ProductThumb({ product }: { product: Product }) {
   const meta = CATEGORY_META[product.category]
   if (product.photo) {
     return (
-      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-paper2">
+      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-paper2 sm:h-12 sm:w-12">
         <img
           src={product.photo}
           alt={product.name}
@@ -137,7 +137,7 @@ function ProductThumb({ product }: { product: Product }) {
     )
   }
   return (
-    <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl ${meta.solid} bg-opacity-15`}>
+    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${meta.solid} bg-opacity-15 sm:h-12 sm:w-12`}>
       <CategoryGlyph category={product.category} />
     </div>
   )
@@ -147,7 +147,7 @@ function ProductThumb({ product }: { product: Product }) {
 function CategoryGlyph({ category }: { category: Product['category'] }) {
   const cls = CATEGORY_META[category]
   const colorClass = cls.solid.replace('bg-', 'text-').split(' ')[0] // ej "text-rose-600"
-  const common = 'h-7 w-7'
+  const common = 'h-5 w-5 sm:h-6 sm:w-6'
   switch (category) {
     case 'canales':
       return (

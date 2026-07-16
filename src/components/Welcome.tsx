@@ -126,7 +126,7 @@ export function Welcome({ onEnter }: Props) {
         </button>
 
         <p className="mt-3 text-center text-[11px] font-medium text-ink-faint">
-          Manda tu número y te reconocemos. Tu pedido se envía al CEDIS por WhatsApp.
+          Manda tu número y te reconocemos. Tu pedido se envía a {BUSINESS.shortName} por WhatsApp.
         </p>
       </div>
     </div>

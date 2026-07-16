@@ -79,7 +79,7 @@ function App() {
 
   return (
     <div className="flex min-h-svh flex-col bg-bg pb-24">
-      {/* Header CEDIS */}
+      {/* Header principal */}
       <header className="sticky top-0 z-30 border-b border-line/10 bg-chrome">
         <div className="mx-auto w-full max-w-6xl">
           <div className="flex items-center gap-3 px-4 py-3">
@@ -157,10 +157,10 @@ function App() {
             <p className="mt-1.5 text-[13px] font-medium text-ink-soft">
               {recognized ? (
                 <>
-                  Hola, <span className="text-[16px] font-extrabold text-ink">{recognized.businessName || 'qué gusto verte'}</span>. Elige tus cortes y mándalos al CEDIS.
+                  Hola, <span className="text-[16px] font-extrabold text-ink">{recognized.businessName || 'qué gusto verte'}</span>. Elige tus cortes y mándalos a {BUSINESS.shortName}.
                 </>
               ) : (
-                `Elige tus cortes y mándalos al CEDIS de ${BUSINESS.locationLabel}.`
+                `Elige tus cortes y mándalos a ${BUSINESS.shortName} en ${BUSINESS.locationLabel}.`
               )}
             </p>
           </div>

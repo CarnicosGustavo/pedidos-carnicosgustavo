@@ -1,8 +1,9 @@
 const env = import.meta.env as unknown as Record<string, string | undefined>
 
 export const BUSINESS = {
-  name: 'Carnicos Gustavo',
-  tagline: 'Centro de Distribucion (CEDIS) de Cerdo',
+  name: 'Centro de Distribucion de Carnicos Gustavo',
+  shortName: 'Carnicos Gustavo',
+  tagline: 'Centro de Distribucion de Carnicos Gustavo',
   locationLabel: env.VITE_LOCATION_LABEL?.trim() || 'Naucalpan, Estado de Mexico',
 }
 
